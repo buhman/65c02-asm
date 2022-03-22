@@ -104,7 +104,7 @@ bool parse(std::string_view buf, assembler::program_t& program)
         if (s.back() == ':') {
           std::string_view key = s.substr(0, s.length() - 1);
           auto symbol = get_symbol(key);
-          std::cout << "label `" << symbol << "`\n";
+          std::cerr << "label `" << symbol << "`\n";
           current_instruction.symbol = symbol;
           state = parser::state::op;
           return true;
@@ -124,11 +124,11 @@ bool parse(std::string_view buf, assembler::program_t& program)
         assert(row == current_row);
         auto op_it = fromstring::op().find(s);
         if (op_it == fromstring::op().end()) {
-          std::cout << "invalid op `" << s << "`\n";
+          std::cerr << "invalid op `" << s << "`\n";
           return false;
         } else {
           current_instruction.op = op_it->second;
-          std::cout << "ok op `" << static_cast<int>(op_it->second) << "`\n";
+          std::cerr << "ok op `" << static_cast<int>(op_it->second) << "`\n";
         }
         state = parser::state::mode;
         return true;
@@ -138,11 +138,11 @@ bool parse(std::string_view buf, assembler::program_t& program)
         assert(row == current_row);
         auto mode_it = fromstring::mode().find(s);
         if (mode_it == fromstring::mode().end()) {
-          std::cout << "invalid mode `" << s << "`\n";
+          std::cerr << "invalid mode `" << s << "`\n";
           return false;
         } else {
           current_instruction.mode = mode_it->second;
-          std::cout << "ok mode `" << static_cast<int>(mode_it->second) << "`\n";
+          std::cerr << "ok mode `" << static_cast<int>(mode_it->second) << "`\n";
         }
         state = parser::state::value;
         return true;
@@ -152,7 +152,7 @@ bool parse(std::string_view buf, assembler::program_t& program)
         auto am_it = addressing_mode().find(current_instruction.mode);
         assert(am_it != addressing_mode().end());
         if (am_it->second.len == 0) {
-          std::cout << "no value expected\n";
+          std::cerr << "no value expected\n";
           assembler::implied_t i {};
           current_instruction.value = i;
           state = parser::state::comment;
@@ -162,7 +162,7 @@ bool parse(std::string_view buf, assembler::program_t& program)
         assert(row == current_row);
 
         auto parse_integer = [](std::string_view s, int base) -> std::optional<ssize_t> {
-          std::string value_str {s.data() + 1, s.size() - 1};
+          std::string value_str {s.data(), s.length()};
           size_t pos;
           ssize_t value;
           value = std::stoll(value_str, &pos, base);
@@ -175,25 +175,50 @@ bool parse(std::string_view buf, assembler::program_t& program)
         std::optional<ssize_t> literal;
         auto as_literal = [](ssize_t n) -> assembler::literal_t { return {n}; };
         switch (*s.cbegin()) {
-        case 'h':
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+        case 'A':
+        case 'B':
+        case 'C':
+        case 'D':
+        case 'E':
+        case 'F':
         {
           literal = parse_integer(s, 16);
           if (literal == std::nullopt) {
-            std::cout << "invalid hex literal\n";
+            std::cerr << row << ": invalid hex literal\n";
           }
           current_instruction.value = as_literal(*literal);
-          std::cout << "value hex literal `" << *literal << "`\n";
+          std::cerr << "value hex literal `" << *literal << "`\n";
+          break;
+        }
+        case 'h':
+        {
+          literal = parse_integer(s.substr(1, s.length() - 1), 16);
+          if (literal == std::nullopt) {
+            std::cerr << row << ": invalid hex literal\n";
+          }
+          current_instruction.value = as_literal(*literal);
+          std::cerr << "value hex literal `" << *literal << "`\n";
           break;
         }
         case 'd':
         {
-          literal = parse_integer(s, 10);
+          literal = parse_integer(s.substr(1, s.length() - 1), 10);
           if (literal == std::nullopt) {
-            std::cout << "invalid dec literal\n";
+            std::cerr << row << ": invalid dec literal\n";
             return false;
           }
           current_instruction.value = as_literal(*literal);
-          std::cout << "value dec literal `" << *literal << "`\n";
+          std::cerr << "value dec literal `" << *literal << "`\n";
           break;
         }
         case ':':
@@ -201,11 +226,11 @@ bool parse(std::string_view buf, assembler::program_t& program)
           std::string_view key = s.substr(1, s.length() - 1);
           assembler::reference_t reference = { get_symbol(key) };
           current_instruction.value = reference;
-          std::cout << "value reference `" << reference.symbol << "`\n";
+          std::cerr << "value reference `" << reference.symbol << "`\n";
           break;
         }
         default:
-          std::cout << "invalid base\n";
+          std::cerr << row << ": invalid base\n";
           return false;
         }
 
@@ -228,7 +253,7 @@ bool parse(std::string_view buf, assembler::program_t& program)
         } else if (inside_comment) {
           return true;
         } else {
-          std::cout << "expected comment\n";
+          std::cerr << row << ": expected comment\n";
           return false;
         }
       }
@@ -246,7 +271,7 @@ bool parse(std::string_view buf, assembler::program_t& program)
         } else if (inside_comment) {
           return true;
         } else {
-          std::cout << "expected comment\n";
+          std::cerr << "expected comment\n";
           return false;
         }
       }

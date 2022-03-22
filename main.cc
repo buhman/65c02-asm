@@ -130,7 +130,7 @@ int main(int argc, char * argv[])
     return -1;
   }
 
-  serialize_program(program, symbol_table, 0x8000, out);
+  serialize_program(program, symbol_table, 0x8200, out);
 
   out.close();
   return 0;
