@@ -5,7 +5,6 @@
 #include "mneumonic.hh"
 
 namespace tostring {
-  extern const std::unordered_map<op_t, std::string_view> op;
-
-  extern const std::unordered_map<amode_t, std::string_view> mode;
+  const std::unordered_map<isa::op, std::string_view>& op();
+  const std::unordered_map<isa::mode, std::string_view>& mode();
 }

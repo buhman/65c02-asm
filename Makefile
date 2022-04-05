@@ -4,8 +4,8 @@ LDFLAGS =
 TARGET =
 CXX = $(TARGET)g++
 
-OBJS = main.o fromstring.o addressing_mode.o codec.o parser.o
-HEADERS = $(wildcard *.h)
+OBJS = main.o tostring.o fromstring.o addressing_mode.o codec.o parser.o symbol.o
+HEADERS = $(wildcard *.hh)
 
 all: main
 

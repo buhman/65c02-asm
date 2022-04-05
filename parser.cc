@@ -8,6 +8,7 @@
 #include "addressing_mode.hh"
 #include "fromstring.hh"
 #include "isa.hh"
+#include "symbol.hh"
 
 static bool tokenize(std::string_view buf, std::function<bool(std::string_view, ssize_t, ssize_t)> cb)
 {
@@ -68,30 +69,14 @@ namespace parser {
   };
 }
 
-using symbol_strings_t = std::unordered_map<std::string_view, size_t>;
-
 namespace parser {
 
-bool parse(std::string_view buf, assembler::program_t& program)
+bool parse(std::string_view buf, assembler::program_t& program, assembler::symbol_strings_t& symbol_strings)
 {
-  size_t current_symbol = 0;
-  symbol_strings_t ss;
-
   parser::state state = parser::state::label_or_op;
 
-  auto get_symbol = [&](std::string_view s) {
-    auto find = ss.find(s);
-    if (find == ss.end()) {
-      auto insert = ss.insert({s, current_symbol++});
-      assert(insert.second);
-      return (insert.first)->second;
-    } else {
-      return find->second;
-    }
-  };
-
   assembler::instruction_t current_instruction;
-  ssize_t current_row;
+  current_instruction.location = 0xeeee;
 
   bool inside_comment = false;
 
@@ -100,11 +85,11 @@ bool parse(std::string_view buf, assembler::program_t& program)
       switch (state) {
       case parser::state::label_or_op:
       {
-        current_row = row;
+        current_instruction.row = row;
         if (s.back() == ':') {
           std::string_view key = s.substr(0, s.length() - 1);
-          auto symbol = get_symbol(key);
-          std::cerr << "label `" << symbol << "`\n";
+          auto symbol = symbol::get(symbol_strings, key);
+          //std::cerr << "label `" << symbol << "`\n";
           current_instruction.symbol = symbol;
           state = parser::state::op;
           return true;
@@ -121,28 +106,28 @@ bool parse(std::string_view buf, assembler::program_t& program)
       }
       case parser::state::op:
       {
-        assert(row == current_row);
+        assert(row == current_instruction.row);
         auto op_it = fromstring::op().find(s);
         if (op_it == fromstring::op().end()) {
-          std::cerr << "invalid op `" << s << "`\n";
+          std::cerr << row << ',' << col << ": invalid op `" << s << "`\n";
           return false;
         } else {
           current_instruction.op = op_it->second;
-          std::cerr << "ok op `" << static_cast<int>(op_it->second) << "`\n";
+          //std::cerr << row << ": ok op `" << static_cast<int>(op_it->second) << "`\n";
         }
         state = parser::state::mode;
         return true;
       }
       case parser::state::mode:
       {
-        assert(row == current_row);
+        assert(row == current_instruction.row);
         auto mode_it = fromstring::mode().find(s);
         if (mode_it == fromstring::mode().end()) {
-          std::cerr << "invalid mode `" << s << "`\n";
+          std::cerr << row << ',' << col << ": invalid mode `" << s << "`\n";
           return false;
         } else {
           current_instruction.mode = mode_it->second;
-          std::cerr << "ok mode `" << static_cast<int>(mode_it->second) << "`\n";
+          //std::cerr << "ok mode `" << static_cast<int>(mode_it->second) << "`\n";
         }
         state = parser::state::value;
         return true;
@@ -152,14 +137,14 @@ bool parse(std::string_view buf, assembler::program_t& program)
         auto am_it = addressing_mode().find(current_instruction.mode);
         assert(am_it != addressing_mode().end());
         if (am_it->second.len == 0) {
-          std::cerr << "no value expected\n";
+          //std::cerr << row << ',' << col << ": no value expected\n";
           assembler::implied_t i {};
           current_instruction.value = i;
           state = parser::state::comment;
           continue;
         }
 
-        assert(row == current_row);
+        assert(row == current_instruction.row);
 
         auto parse_integer = [](std::string_view s, int base) -> std::optional<ssize_t> {
           std::string value_str {s.data(), s.length()};
@@ -185,52 +170,62 @@ bool parse(std::string_view buf, assembler::program_t& program)
         case '7':
         case '8':
         case '9':
-        case 'A':
-        case 'B':
-        case 'C':
-        case 'D':
-        case 'E':
-        case 'F':
+        case 'a':
+        case 'b':
+        case 'c':
+        case 'd':
+        case 'e':
+        case 'f':
         {
           literal = parse_integer(s, 16);
           if (literal == std::nullopt) {
-            std::cerr << row << ": invalid hex literal\n";
+            std::cerr << row << ',' << col << ": invalid hex literal\n";
           }
           current_instruction.value = as_literal(*literal);
-          std::cerr << "value hex literal `" << *literal << "`\n";
+          //std::cerr << "value hex literal `" << *literal << "`\n";
           break;
         }
-        case 'h':
+        case '%':
+        {
+          literal = parse_integer(s.substr(1, s.length() - 1), 2);
+          if (literal == std::nullopt) {
+            std::cerr << row << ',' << col << ": invalid bin literal\n";
+          }
+          current_instruction.value = as_literal(*literal);
+          //std::cerr << "value bin literal `" << *literal << "`\n";
+          break;
+        }
+        case '$':
         {
           literal = parse_integer(s.substr(1, s.length() - 1), 16);
           if (literal == std::nullopt) {
-            std::cerr << row << ": invalid hex literal\n";
+            std::cerr << row << ',' << col << ": invalid hex literal\n";
           }
           current_instruction.value = as_literal(*literal);
-          std::cerr << "value hex literal `" << *literal << "`\n";
+          //std::cerr << "value hex literal `" << *literal << "`\n";
           break;
         }
-        case 'd':
+        case 'i':
         {
           literal = parse_integer(s.substr(1, s.length() - 1), 10);
           if (literal == std::nullopt) {
-            std::cerr << row << ": invalid dec literal\n";
+            std::cerr << row << ',' << col << ": invalid dec literal\n";
             return false;
           }
           current_instruction.value = as_literal(*literal);
-          std::cerr << "value dec literal `" << *literal << "`\n";
+          //std::cerr << "value dec literal `" << *literal << "`\n";
           break;
         }
         case ':':
         {
           std::string_view key = s.substr(1, s.length() - 1);
-          assembler::reference_t reference = { get_symbol(key) };
+          assembler::reference_t reference = { symbol::get(symbol_strings, key) };
           current_instruction.value = reference;
-          std::cerr << "value reference `" << reference.symbol << "`\n";
+          //std::cerr << "value reference `" << reference.symbol << "`\n";
           break;
         }
         default:
-          std::cerr << row << ": invalid base\n";
+          std::cerr << row << ',' << col << ": invalid base\n";
           return false;
         }
 
@@ -239,8 +234,8 @@ bool parse(std::string_view buf, assembler::program_t& program)
       }
       case parser::state::comment:
       {
-        if (row != current_row) {
-          std::cerr << "push " << (int)current_instruction.op << '\n';
+        if (row != current_instruction.row) {
+          //std::cerr << "push " << (int)current_instruction.op << '\n';
           inside_comment = false;
           program.push_back(current_instruction);
           state = parser::state::label_or_op;
@@ -253,13 +248,13 @@ bool parse(std::string_view buf, assembler::program_t& program)
         } else if (inside_comment) {
           return true;
         } else {
-          std::cerr << row << ": expected comment\n";
+          std::cerr << row << ',' << col << ": expected comment\n";
           return false;
         }
       }
       case parser::state::just_comment:
       {
-        if (row != current_row) {
+        if (row != current_instruction.row) {
           inside_comment = false;
           state = parser::state::label_or_op;
           continue;
@@ -271,7 +266,7 @@ bool parse(std::string_view buf, assembler::program_t& program)
         } else if (inside_comment) {
           return true;
         } else {
-          std::cerr << "expected comment\n";
+          std::cerr << row << ',' << col << ": expected comment\n";
           return false;
         }
       }
