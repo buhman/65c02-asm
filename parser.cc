@@ -144,6 +144,8 @@ bool parse(std::string_view buf, assembler::program_t& program, assembler::symbo
           continue;
         }
 
+        if (row != current_instruction.row)
+          std::cerr << row << ' ' << current_instruction.row;
         assert(row == current_instruction.row);
 
         auto parse_integer = [](std::string_view s, int base) -> std::optional<ssize_t> {
@@ -205,7 +207,7 @@ bool parse(std::string_view buf, assembler::program_t& program, assembler::symbo
           //std::cerr << "value hex literal `" << *literal << "`\n";
           break;
         }
-        case 'i':
+        case '^':
         {
           literal = parse_integer(s.substr(1, s.length() - 1), 10);
           if (literal == std::nullopt) {

@@ -27,6 +27,12 @@ void serialize_program(const assembler::program_t& program, const assembler::sym
       return;
     }
 
+    /*
+    std::cerr << tostring::op().find(ins.op)->second << ' '
+              << tostring::mode().find(ins.mode)->second << ' '
+              << std::hex << (int)opcode_it->second << '\n';
+    */
+
     buf[0] = opcode_it->second;
 
     auto am_it = addressing_mode().find(ins.mode);
@@ -37,7 +43,7 @@ void serialize_program(const assembler::program_t& program, const assembler::sym
         assembler::reference_t ref = std::get<assembler::reference_t>(ins.value);
         auto sym_it = symbol_table.find(ref.symbol);
         if (sym_it == symbol_table.end()) {
-          std::cerr << "get_value: " << ref.symbol << '\n';
+          std::cerr << "get_value: `" << std::dec << ref.symbol << "` not found\n";
           assert(false);
         }
         auto ref_location = sym_it->second;
@@ -142,7 +148,12 @@ int main(int argc, char * argv[])
     }
   }
 
-  ok = symbol::resolve(0xc000, program, symbol_table);
+  //auto link_address = 0xc000;
+  auto link_address = 0x0200;
+
+  std::cerr << "link address: " << std::hex << link_address << '\n';
+
+  ok = symbol::resolve(link_address, program, symbol_table);
   if (!ok)
     return -1;
 

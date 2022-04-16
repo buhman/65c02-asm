@@ -51,7 +51,7 @@ bool resolve(size_t link_location, assembler::program_t& program, assembler::sym
         std::cerr << "duplicate blob symbol\n";
         return false;
       }
-      offset += 4 + blob.buf->size();
+      offset += blob.buf->size();
     } else {
       assert(false);
     }
